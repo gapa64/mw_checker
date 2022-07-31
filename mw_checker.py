@@ -10,12 +10,12 @@ from lxml import etree
 from multiprocessing import Pool
 from ncclient import manager
 from time import sleep
-from pprint import pprint
 
 logging.basicConfig(level=logging.INFO,
                     filename='mw_checker.log',
                     format='%(asctime)s, %(levelname)s, %(message)s')
 logger = logging.getLogger(__name__)
+
 
 class MwcheckerError(BaseException):
     pass
@@ -52,14 +52,11 @@ class DBHandler:
             with sqlite3.connect(self.dbname) as con:
                 cursor = con.cursor()
                 for parameters in parameters_deck:
-                    #pprint(parameters)
-                    #pprint(sql_request)
                     cursor.execute(sql_request, parameters)
-        except sqlite3.IntegrityError  as error:
+        except sqlite3.IntegrityError as error:
             logger.error(error, exc_info=True)
             raise MwcheckerError(error)
         except sqlite3.Error as error:
-            #print(error)
             logger.error(error, exc_info=True)
 
     def execute_many_scripts(self, querry_list, parameters_deck):
@@ -68,27 +65,11 @@ class DBHandler:
                 cursor = con.cursor()
                 for parameters in parameters_deck:
                     for querry in querry_list:
-                        #pprint(parameters)
-                        #pprint(querry_list)
                         cursor.execute(querry, parameters)
         except sqlite3.Error as error:
-            #print(error)
             logger.error(error, exc_info=True)
 
-    def get_data(self, sql_request, parameters=None):
-        try:
-            with sqlite3.connect(self.dbname) as con:
-                con.row_factory = sqlite3.Row
-                cursor = con.cursor()
-                if parameters is not None:
-                    cursor.execute(sql_request, parameters)
-                else:
-                    cursor.execute(sql_request)
-                return cursor.fetchall()
-        except sqlite3.Error as error:
-            logger.error(error, exc_info=True)
-
-    def get_many(self, sql_list, parameters=None):
+    def get_many(self, sql_list):
         list_of_responses = []
         try:
             with sqlite3.connect(self.dbname) as con:
@@ -101,6 +82,7 @@ class DBHandler:
             return list_of_responses
         except sqlite3.Error as error:
             logger.error(error, exc_info=True)
+
 
 class Mwchecker(DBHandler):
     WORKERS_NUMBER = 8
@@ -120,15 +102,13 @@ class Mwchecker(DBHandler):
                         r'time=\d+.?\d+\s+ms')
     PRECHECK_DB_NAME = 'precheck_mwc'
     POSTCHECK_DB_NAME = 'postcheck_mwc'
-    PRECHECK_FIELDS = (#'id INTEGER PRIMARY KEY, '
-                        'arp_ip text , '
-                        'arp_mac text, '
-                        'arp_irb text, '
-                        'arp_ifl text, '
-                        'ping text,'
-                        'PRIMARY KEY (arp_ip, arp_mac, arp_irb)')
-    POSTCHECK_FIELDS = (#'id INTEGER PRIMARY KEY, '
-                        'ip text PRIMARY KEY, '
+    PRECHECK_FIELDS = ('arp_ip text , '
+                       'arp_mac text, '
+                       'arp_irb text, '
+                       'arp_ifl text, '
+                       'ping text,'
+                       'PRIMARY KEY (arp_ip, arp_mac, arp_irb)')
+    POSTCHECK_FIELDS = ('ip text PRIMARY KEY, '
                         'arp_ip text, '
                         'arp_mac text, '
                         'arp_irb text, '
@@ -239,7 +219,6 @@ class Mwchecker(DBHandler):
     def get_pings_runner(self, hosts_lists, workers=WORKERS_NUMBER):
         print('{}: Starting to ping hosts connected to '
               'router {}'.format(self.ttime(), self.router))
-        # print(hosts_lists)
         if len(hosts_lists) // workers >= 2:
             with Pool(workers) as p:
                 ping_results = p.map(self.pinger_worker, hosts_lists)
@@ -265,12 +244,12 @@ class Mwchecker(DBHandler):
     def get_frombox_data(self, username, password, port=22):
         print('{}: Connecting to router {}'.format(self.ttime(), self.router))
         response = {}
-        with  manager.connect(host=self.router,
-                              port=port,
-                              username=username,
-                              password=password,
-                              hostkey_verify=False,
-                              device_params={'name': 'junos'}) as mgr:
+        with manager.connect(host=self.router,
+                             port=port,
+                             username=username,
+                             password=password,
+                             hostkey_verify=False,
+                             device_params={'name': 'junos'}) as mgr:
             sleep(1)
             for task, rpc_querry in self.OUTPUT_TASKS.items():
                 response[task] = mgr.rpc(rpc_querry)
@@ -293,7 +272,6 @@ class Mwchecker(DBHandler):
                 entry['arp_ifl'] = interface
                 entry['arp_irb'] = 'n_a'
             parsed_entries.append(entry)
-        #print(parsed_entries)
         return parsed_entries
 
     def get_conditions_sql(self, **conditions):
@@ -314,8 +292,7 @@ class Mwchecker(DBHandler):
         return ' AND '.join(condition_list)
 
     def get_ip_address(self, hosts_sql_querry):
-        #print(hosts_sql_querry)
-        collumn = self.get_data(sql_request=hosts_sql_querry)
+        collumn = self.execute(sql_request=hosts_sql_querry)
         if not collumn:
             return ()
         return [row['arp_ip'] for row in collumn]
@@ -334,9 +311,7 @@ class Mwchecker(DBHandler):
                 sql_list.append(sql_query)
 
         result_list = self.get_many(sql_list)
-        #print(result_list)
         unreachable_hosts = result_list.pop(0)
-        #print(unreachable_hosts)
         for result in result_list:
             for row in result:
                 for field, value in dict(row).items():
@@ -373,6 +348,7 @@ class Mwchecker(DBHandler):
             return else_return
         return raw_result[0].text.strip()
 
+
 def precheck_arp(mwc_object, args):
     table = 'precheck_{}'.format(str(args.dest))
     password = getpass()
@@ -382,15 +358,18 @@ def precheck_arp(mwc_object, args):
                                   destination_table=table,
                                   port=args.port)
 
+
 def precheck_ping(mwc_object, args):
     table = 'precheck_{}'.format(str(args.dest))
     mwc_object.fetch_precheck_pings(table=table,
                                     irb=args.irb,
                                     ifl=args.ifl)
 
+
 def precheck_all(mwc_object, args):
     precheck_arp(mwc_object, args)
     precheck_ping(mwc_object, args)
+
 
 def postcheck_ping(mwc_object, args):
     source_table = 'precheck_{}'.format(str(args.source))
@@ -399,20 +378,23 @@ def postcheck_ping(mwc_object, args):
     mwc_object.fetch_postcheck_pings(source_table=source_table,
                                      destination_table=destination_table)
 
+
 def postcheck_arp(mwc_object, args, password=None):
     table = 'postcheck_{}'.format(str(args.dest))
     if password is None:
-       password = getpass()
+        password = getpass()
     mwc_object.init_postcheck_database(table)
     mwc_object.fetch_postcheck_arp(username=args.user,
                                    password=password,
                                    destination_table=table,
                                    port=args.port)
 
+
 def postcheck_all(mwc_object, args):
     password = getpass()
     postcheck_ping(mwc_object, args)
     postcheck_arp(mwc_object, args, password=password)
+
 
 def report_get(mwc_object, args):
     precheck_table = 'precheck_{}'.format(str(args.precheck))
@@ -420,12 +402,8 @@ def report_get(mwc_object, args):
     mwc_object.get_report(precheck=precheck_table,
                           postcheck=postcheck_table)
 
+
 if __name__ == '__main__':
-    #mwc = Mwchecker(router='172.30.128.107')
-    #username = 'root'
-    #password = 'root123'
-    #mwc.init_database()
-    #mwc.get_report(precheck='precheck_mwc', postcheck='postcheck_mwc')
     parser = argparse.ArgumentParser()
     parser.add_argument(dest='router',
                         type=str,
@@ -520,8 +498,8 @@ if __name__ == '__main__':
                                required=True,
                                help='Set user to fetch data from box')
     arp_postcheck.add_argument('--port',
-                              default=22,
-                              help='specify port to connect device 22 is default')
+                               default=22,
+                               help='specify port to connect device 22 is default')
     arp_postcheck.set_defaults(function=postcheck_arp)
 
     ping_postcheck = postcheck_subparser.add_parser('ping',
@@ -551,8 +529,8 @@ if __name__ == '__main__':
                                default=0,
                                help='ID of destination POST check table ')
     all_postcheck.add_argument('--port',
-                              default=22,
-                              help='specify port to connect device 22 is default')
+                               default=22,
+                               help='specify port to connect device 22 is default')
     all_postcheck.set_defaults(function=postcheck_all)
 
     report = subparser.add_parser('report',
