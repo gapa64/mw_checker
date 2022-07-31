@@ -24,12 +24,15 @@ pip3 install -r requirements.txt
 - The Third phase is report generation. The script compares particular pre-check and post-check tables displays summary statistics, and lost hosts
 ## How to use
 ## Quick start
-The for the most simple scenario with the default parameters
+
+The most simple scenario with the default parameters. 
+
 ```bash
 python3 mw_checker.py <router> precheck all --user <user_name>
 python3 mw_checker.py <router> postcheck all --user <user_name>
 python3 mw_checker.py report
 ```
+
 ## Detailed description
 ### Precheck Operations
 Specify router as a positional argument to perform MW check procedures  
