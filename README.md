@@ -84,9 +84,10 @@ optional arguments:
 ```
 System allows filter which interface to ping by manipulations with the --irb and --ifl argumnets.  
 This arguments refer to the Interface column in the ARP table.  
-It allows users to perform distinct pre-checks for distinct interfaces, or just to limit the hosts which the host need to ping
+It allows users to perform distinct pre-checks for distinct interfaces, or just to limit the hosts which the host need to ping.  
+The following tables is the typical Juniper arp table:
 ```bash
-root@r1-mx-1_RE> show arp no-resolve 
+show arp no-resolve 
 MAC Address       Address         Interface         Flags
 56:68:a3:1e:06:82 10.1.12.2       ge-0/0/0.0               none
 56:68:a3:1e:06:4a 10.1.14.4       ge-0/0/3.0               none
